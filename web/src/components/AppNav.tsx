@@ -99,26 +99,33 @@ export function NavFrame({ pathname }: { pathname: string | null }) {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-surface lg:flex">
+      <aside className="no-print sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-surface lg:flex">
         <Brand />
         <div className="flex-1 overflow-y-auto px-3 pb-4">
           <NavSections active={active} />
         </div>
-        <div className="border-t border-border p-3">
+        <div className="border-t border-border p-3 space-y-2">
+          <div className="flex items-center gap-2 rounded-lg bg-surface-2 px-2.5 py-1.5 text-[11px] text-muted">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            </span>
+            <span className="truncate font-medium text-foreground/80">System Live • 320 Slots</span>
+          </div>
           <UserNav />
         </div>
       </aside>
 
       {/* Mobile top bar */}
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-surface/85 px-4 pt-[env(safe-area-inset-top)] backdrop-blur-md lg:hidden">
+      <header className="no-print sticky top-0 z-30 flex items-center justify-between border-b border-border/80 bg-surface/85 px-4 pt-[env(safe-area-inset-top)] backdrop-blur-xl lg:hidden">
         <Link href="/" className="flex h-14 items-center gap-2.5 font-semibold">
           <Logo />
-          Parking
+          <span className="font-bold tracking-tight">Parking Hub</span>
         </Link>
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="-mr-2 grid h-11 w-11 place-items-center rounded-lg hover:bg-surface-2"
+          className="-mr-2 grid h-11 w-11 place-items-center rounded-xl hover:bg-surface-2 active:scale-95 transition-transform"
           aria-label="Open menu"
           aria-expanded={open}
         >
@@ -126,16 +133,17 @@ export function NavFrame({ pathname }: { pathname: string | null }) {
         </button>
       </header>
 
-      {/* Mobile drawer */}
+      {/* Mobile drawer backdrop */}
       <div
-        className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity lg:hidden ${
+        className={`no-print fixed inset-0 z-40 bg-black/50 backdrop-blur-xs transition-opacity duration-300 lg:hidden ${
           open ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         onClick={() => setOpen(false)}
         aria-hidden
       />
+      {/* Mobile drawer panel */}
       <nav
-        className={`fixed inset-y-0 right-0 z-50 flex w-[82%] max-w-xs flex-col bg-surface pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-2xl transition-transform duration-300 lg:hidden ${
+        className={`no-print fixed inset-y-0 right-0 z-50 flex w-[82%] max-w-xs flex-col bg-surface/95 backdrop-blur-2xl border-l border-border/60 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-2xl transition-transform duration-300 lg:hidden ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
         aria-label="Main menu"
@@ -146,7 +154,7 @@ export function NavFrame({ pathname }: { pathname: string | null }) {
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="grid h-11 w-11 place-items-center rounded-lg hover:bg-surface-2"
+            className="grid h-11 w-11 place-items-center rounded-xl hover:bg-surface-2 active:scale-95 transition-transform"
             aria-label="Close menu"
           >
             <Icon name="close" className="h-6 w-6" />
@@ -160,27 +168,32 @@ export function NavFrame({ pathname }: { pathname: string | null }) {
         </div>
       </nav>
 
-      {/* Mobile bottom tab bar */}
+      {/* Mobile bottom tab bar - Floating glass island dock */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden"
+        className="no-print fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] inset-x-3 z-30 mx-auto max-w-md rounded-2xl border border-white/20 bg-surface/90 p-1.5 shadow-2xl backdrop-blur-xl ring-1 ring-black/5 dark:border-white/10 dark:ring-white/10 lg:hidden"
         aria-label="Quick navigation"
       >
-        <ul className="mx-auto grid max-w-lg grid-cols-5">
+        <ul className="grid grid-cols-5 gap-1">
           {TABS.map(([href, label, icon]) => {
             const isActive = active === href;
             return (
               <li key={href}>
                 <Link
                   href={href}
-                  className={`flex h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors ${
-                    isActive ? "text-accent" : "text-muted hover:text-foreground"
+                  className={`group flex flex-col items-center justify-center rounded-xl py-2 px-1 text-[11px] font-medium transition-all duration-150 active:scale-90 ${
+                    isActive
+                      ? "bg-accent text-accent-fg font-semibold shadow-md shadow-accent/25"
+                      : "text-muted hover:bg-surface-2 hover:text-foreground"
                   }`}
                   aria-current={isActive ? "page" : undefined}
                 >
-                  <span className={`grid h-7 w-12 place-items-center rounded-full ${isActive ? "bg-accent-soft" : ""}`}>
-                    <Icon name={icon} className="h-5 w-5" />
-                  </span>
-                  {label}
+                  <Icon
+                    name={icon}
+                    className={`h-5 w-5 transition-transform duration-150 ${
+                      isActive ? "scale-105" : "group-hover:scale-105"
+                    }`}
+                  />
+                  <span className="mt-0.5 tracking-tight text-[10px] leading-tight">{label}</span>
                 </Link>
               </li>
             );
@@ -193,15 +206,17 @@ export function NavFrame({ pathname }: { pathname: string | null }) {
 
 function Logo() {
   return (
-    <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-sm font-bold text-accent-fg">P</span>
+    <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-indigo-500 to-accent text-sm font-bold text-accent-fg shadow-xs shadow-accent/30 transition-transform duration-200 group-hover:scale-105">
+      P
+    </span>
   );
 }
 
 function Brand() {
   return (
-    <Link href="/" className="flex h-16 items-center gap-2.5 px-5 font-semibold">
+    <Link href="/" className="group flex h-16 items-center gap-2.5 px-5 font-semibold transition-opacity hover:opacity-90">
       <Logo />
-      <span className="leading-tight">
+      <span className="leading-tight transition-transform duration-150 group-hover:translate-x-0.5">
         Parking
         <span className="block text-xs font-normal text-muted">Management</span>
       </span>
@@ -221,18 +236,24 @@ function NavSections({ active, onNavigate }: { active: string | null; onNavigate
             {section.links.map(([href, label, icon]) => {
               const isActive = active === href;
               return (
-                <li key={href}>
+                <li key={href} className="relative">
+                  {isActive && (
+                    <span
+                      className="absolute -left-3 top-1.5 bottom-1.5 w-1 rounded-r-full bg-accent shadow-xs shadow-accent/50"
+                      aria-hidden="true"
+                    />
+                  )}
                   <Link
                     href={href}
                     onClick={onNavigate}
                     aria-current={isActive ? "page" : undefined}
-                    className={`flex min-h-10 items-center gap-3 rounded-lg px-3 text-sm transition-colors ${
+                    className={`flex min-h-10 items-center gap-3 rounded-lg px-3 text-sm transition-all duration-150 ease-out active:scale-[0.98] ${
                       isActive
-                        ? "bg-accent-soft font-semibold text-accent"
-                        : "text-foreground/80 hover:bg-surface-2 hover:text-foreground"
+                        ? "bg-accent-soft font-semibold text-accent shadow-xs"
+                        : "text-foreground/80 hover:bg-surface-2 hover:text-foreground hover:translate-x-0.5"
                     }`}
                   >
-                    <Icon name={icon} className="h-[18px] w-[18px] shrink-0" />
+                    <Icon name={icon} className={`h-[18px] w-[18px] shrink-0 transition-transform duration-150 ${isActive ? "scale-105" : ""}`} />
                     {label}
                   </Link>
                 </li>

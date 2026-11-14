@@ -11,7 +11,8 @@
   --accent-soft: #eef2ff;
   --accent-fg: #ffffff;
   --ring: rgb(79 70 229 / 0.25);
-  --shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 1px 3px rgb(15 23 42 / 0.06);
+  --shadow: 0 1px 3px rgb(15 23 42 / 0.04), 0 1px 2px rgb(15 23 42 / 0.06);
+  --shadow-lg: 0 10px 15px -3px rgb(15 23 42 / 0.06), 0 4px 6px -4px rgb(15 23 42 / 0.04);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -26,7 +27,8 @@
     --accent-soft: rgb(129 140 248 / 0.12);
     --accent-fg: #0b0e14;
     --ring: rgb(129 140 248 / 0.3);
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow: 0 1px 3px rgb(0 0 0 / 0.4);
+    --shadow-lg: 0 10px 25px -5px rgb(0 0 0 / 0.5), 0 8px 10px -6px rgb(0 0 0 / 0.4);
   }
 }
 
@@ -46,6 +48,7 @@
 
 html {
   -webkit-tap-highlight-color: transparent;
+  scroll-behavior: smooth;
 }
 
 body {
@@ -53,25 +56,198 @@ body {
   color: var(--foreground);
 }
 
+/* ==========================================================================
+   Cross-Document View Transitions (Smooth Navigation between pages)
+   Kept on compositor thread (opacity + transform) & respects reduced-motion
+   ========================================================================== */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition {
+    navigation: auto;
+  }
+
+  ::view-transition-old(root) {
+    animation: 160ms cubic-bezier(0.4, 0, 1, 1) both page-fade-out;
+  }
+
+  ::view-transition-new(root) {
+    animation: 220ms cubic-bezier(0, 0, 0.2, 1) both page-fade-in;
+  }
+
+  @keyframes page-fade-out {
+    from {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.998);
+    }
+  }
+
+  @keyframes page-fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.998);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  /* Micro-animation utilities */
+  .animate-reveal {
+    animation: reveal-up 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .animate-reveal-stagger-1 { animation: reveal-up 280ms cubic-bezier(0.16, 1, 0.3, 1) 40ms both; }
+  .animate-reveal-stagger-2 { animation: reveal-up 280ms cubic-bezier(0.16, 1, 0.3, 1) 80ms both; }
+  .animate-reveal-stagger-3 { animation: reveal-up 280ms cubic-bezier(0.16, 1, 0.3, 1) 120ms both; }
+
+  @keyframes reveal-up {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes laser-sweep {
+    0% {
+      top: 6%;
+      opacity: 0.3;
+    }
+    50% {
+      top: 92%;
+      opacity: 0.95;
+    }
+    100% {
+      top: 6%;
+      opacity: 0.3;
+    }
+  }
+
+  .laser-beam {
+    animation: laser-sweep 2.4s ease-in-out infinite;
+  }
+}
+
+/* ==========================================================================
+   Progress Ring Component (Modern Web Guidance: progress-ring)
+   Accessible <progress> with conic-gradient & GPU-accelerated transition
+   ========================================================================== */
+@property --value {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+
+.progress-ring-wrapper {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+progress.progress-ring {
+  --size: 136px;
+  --thickness: 12px;
+  --track-color: rgba(148, 163, 184, 0.15);
+  --fill-color: var(--color-accent);
+  --value: 0;
+  width: var(--size);
+  height: var(--size);
+  border-radius: 50%;
+  border: var(--thickness) solid transparent;
+  background-origin: border-box;
+  background-clip: border-area;
+  background: conic-gradient(
+    var(--fill-color) calc(var(--value) * 1%),
+    var(--track-color) 0
+  );
+  transition: --value 0s ease-in-out;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  progress.progress-ring {
+    transition: --value 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+progress.progress-ring::-webkit-progress-bar,
+progress.progress-ring::-webkit-progress-value,
+progress.progress-ring::-moz-progress-bar {
+  display: none;
+  background: none;
+}
+
+@supports not (background-clip: border-area) {
+  progress.progress-ring {
+    mask-image: radial-gradient(
+      transparent calc(50% - var(--thickness)),
+      black calc(50% - var(--thickness) + 0.5px)
+    );
+    border: 0;
+  }
+}
+
+.progress-ring-content {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+
 @layer components {
   .page-title { @apply text-xl font-semibold tracking-tight sm:text-2xl; }
   .page-subtitle { @apply mt-0.5 text-sm text-muted; }
-  .card { @apply rounded-xl border border-border bg-surface p-4 shadow-(--shadow) sm:p-5; }
+  
+  .card { 
+    @apply rounded-xl border border-border bg-surface p-4 shadow-(--shadow) transition-all duration-200 ease-out sm:p-5; 
+  }
+  .card:hover {
+    @apply border-border/90 shadow-(--shadow-lg);
+  }
+
+  .card-interactive {
+    @apply rounded-xl border border-border bg-surface p-4 shadow-(--shadow) transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-accent/30 hover:shadow-(--shadow-lg) active:translate-y-0 sm:p-5;
+  }
+
   .card-title { @apply mb-3 font-semibold; }
   .label { @apply mb-1.5 block text-sm font-medium text-muted; }
+  
   /* 16px on phones prevents iOS from zooming into focused fields. */
-  .input { @apply min-h-11 w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-base outline-none transition focus:border-accent focus:ring-4 focus:ring-(--ring) sm:min-h-10 sm:text-sm; }
-  .btn { @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-medium transition hover:bg-surface-2 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50; }
-  .btn-primary { @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-fg shadow-sm transition hover:opacity-90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50; }
-  .btn-danger { @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-red-500/30 px-3.5 py-2 text-sm font-medium text-red-600 transition hover:bg-red-500/10 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 dark:text-red-400; }
+  .input { 
+    @apply min-h-11 w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-base outline-none transition-all duration-150 focus:border-accent focus:bg-surface focus:ring-4 focus:ring-(--ring) sm:min-h-10 sm:text-sm; 
+  }
+  
+  .btn { 
+    @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-medium transition-all duration-150 ease-out hover:bg-surface-2 hover:border-border/80 hover:shadow-xs active:scale-[0.97] active:duration-75 disabled:pointer-events-none disabled:opacity-50; 
+  }
+  
+  .btn-primary { 
+    @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-fg shadow-xs transition-all duration-150 ease-out hover:opacity-95 hover:shadow-md hover:shadow-accent/20 active:scale-[0.97] active:duration-75 disabled:pointer-events-none disabled:opacity-50; 
+  }
+  
+  .btn-danger { 
+    @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-red-500/30 px-3.5 py-2 text-sm font-medium text-red-600 transition-all duration-150 ease-out hover:bg-red-500/10 hover:border-red-500/50 hover:shadow-xs active:scale-[0.97] active:duration-75 disabled:pointer-events-none disabled:opacity-50 dark:text-red-400; 
+  }
+  
   .error { @apply rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2.5 text-sm text-red-700 dark:text-red-300; }
   .success { @apply rounded-lg border border-green-500/20 bg-green-500/10 px-3 py-2.5 text-sm text-green-700 dark:text-green-300; }
+  
   .table { @apply w-full text-sm; }
   .table th { @apply border-b border-border bg-surface-2 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted; }
   .table td { @apply border-b border-border px-4 py-3 align-middle; }
   .table tbody tr:last-child td { @apply border-b-0; }
-  .table tbody tr { @apply transition-colors hover:bg-surface-2; }
-  .badge { @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap; }
+  .table tbody tr { @apply transition-colors duration-150 hover:bg-surface-2/70; }
+  
+  .badge { @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap transition-transform duration-150; }
   .badge-green { @apply bg-green-500/15 text-green-700 dark:text-green-400; }
   .badge-red { @apply bg-red-500/15 text-red-700 dark:text-red-400; }
   .badge-amber { @apply bg-amber-500/15 text-amber-700 dark:text-amber-400; }
@@ -100,3 +276,53 @@ body {
   .table-stack tbody td.cell-actions { @apply mt-2 justify-end gap-2 border-t border-border pt-3; }
   .table-stack tbody td.cell-empty { @apply justify-center py-6; }
 }
+
+/* ==========================================================================
+   Print Stylesheet (Thermal Receipt 80mm & Clean Slips)
+   ========================================================================== */
+@media print {
+  /* Suppress UI chrome, navigation, headers, forms, buttons */
+  aside,
+  header,
+  nav,
+  .no-print,
+  button:not(.allow-print),
+  .btn,
+  form {
+    display: none !important;
+  }
+
+  /* Reset body and container backgrounds for pristine thermal printing */
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  main {
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+  }
+
+  /* Target the thermal receipt container */
+  .receipt-card {
+    border: 1px dashed #333333 !important;
+    border-radius: 4px !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    max-width: 320px !important;
+    margin: 0 auto !important;
+    padding: 14px !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}
+

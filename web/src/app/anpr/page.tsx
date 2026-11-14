@@ -45,10 +45,11 @@ async function AnprContent({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="animate-reveal flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="inline-flex items-center gap-1.5 rounded-md bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent">
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent shadow-2xs">
+              <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
               Gate Terminal
             </span>
             {user && (
@@ -73,20 +74,22 @@ async function AnprContent({ searchParams }: PageProps) {
         </div>
       </div>
 
-      {gates.length === 0 ? (
-        <div className="card border-red-500/20 bg-red-500/5">
-          <p className="error">
-            No active parking gates configured. Please <Link href="/gates" className="underline font-medium">add or activate gates</Link> first.
-          </p>
-        </div>
-      ) : (
-        <PlateScanner
-          gates={gates}
-          vehicleTypes={vehicleTypes}
-          initialMode={requestedMode}
-          initialGateId={requestedGateId}
-        />
-      )}
+      <div className="animate-reveal-stagger-1">
+        {gates.length === 0 ? (
+          <div className="card border-red-500/20 bg-red-500/5">
+            <p className="error">
+              No active parking gates configured. Please <Link href="/gates" className="underline font-medium">add or activate gates</Link> first.
+            </p>
+          </div>
+        ) : (
+          <PlateScanner
+            gates={gates}
+            vehicleTypes={vehicleTypes}
+            initialMode={requestedMode}
+            initialGateId={requestedGateId}
+          />
+        )}
+      </div>
     </div>
   );
 }
