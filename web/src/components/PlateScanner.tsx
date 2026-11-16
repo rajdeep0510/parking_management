@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { createWorker, Worker } from "tesseract.js";
-import { extractPlateNumber, preprocessCanvasForOcr, playSuccessChime, formatPlateAsYouType } from "@/lib/anpr";
+import { extractPlateNumber, preprocessCanvasForOcr, playSuccessChime, formatPlateAsYouType, formatIndianPlate } from "@/lib/anpr";
 import { Icon } from "./Icon";
 
 export type GateOption = {
@@ -728,99 +728,87 @@ export function PlateScanner({
 
               {/* 1. SLOT TYPE SELECTION PROMPT (Appears after plate is captured at Entry Gate) */}
               {pendingEntryPlate && isEntry && (
-                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/75 backdrop-blur-xs p-4 text-center">
-                  <div className="w-full max-w-md rounded-2xl border border-emerald-500/40 bg-surface/98 p-5 shadow-2xl backdrop-blur-md text-foreground space-y-4 animate-in fade-in zoom-in-95 duration-200">
-                    <div className="flex items-center justify-between border-b border-border pb-2.5">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                        <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                          Step 2 • Select Slot Type
-                        </span>
+                <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/80 backdrop-blur-xs p-2 sm:p-4">
+                  <div className="w-full max-w-xl rounded-2xl border border-emerald-500/50 bg-surface/98 p-3.5 sm:p-4 shadow-2xl backdrop-blur-md text-foreground animate-in fade-in zoom-in-95 duration-150 max-h-[95%] overflow-y-auto flex flex-col justify-between">
+                    {/* Header Bar: Status & Formatted License Plate */}
+                    <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
+                        <div className="min-w-0">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block leading-tight">
+                            Select Slot Type • Entry Gate
+                          </span>
+                          <span className="font-mono text-lg sm:text-xl font-black tracking-wider text-foreground truncate">
+                            {formatIndianPlate(pendingEntryPlate)}
+                          </span>
+                        </div>
                       </div>
+
                       <button
                         type="button"
                         onClick={handleCancelEntry}
-                        className="text-xs text-muted hover:text-foreground cursor-pointer px-1.5 py-0.5 rounded hover:bg-surface-2"
+                        className="shrink-0 text-xs text-muted hover:text-foreground cursor-pointer px-2 py-1 rounded-lg hover:bg-surface-2 transition flex items-center gap-1"
                       >
-                        ✕ Cancel
+                        ✕ Rescan
                       </button>
                     </div>
 
-                    <div className="text-left space-y-1">
-                      <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">
-                        Captured License Plate
-                      </span>
-                      <div className="font-mono text-2xl font-black tracking-wider text-accent bg-accent-soft/30 px-3 py-1.5 rounded-lg border border-accent/20">
-                        {pendingEntryPlate}
-                      </div>
-                    </div>
-
-                    <div className="text-left space-y-2">
-                      <div className="flex items-center justify-between text-xs font-semibold text-foreground">
-                        <span>Choose Slot Type:</span>
-                        <span className="text-[11px] font-normal text-muted">
+                    {/* Slot Type Selection Grid */}
+                    <div className="py-2.5 space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-foreground">Choose Allocation Bay:</span>
+                        <span className="text-[11px] text-muted">
                           {selectedSlotTypeId
-                            ? `${slotTypes.find((s) => s.value === selectedSlotTypeId)?.available_count ?? 0} free`
-                            : "Any free slot"}
+                            ? `${slotTypes.find((s) => s.value === selectedSlotTypeId)?.available_count ?? 0} available`
+                            : "Auto-assigns any free slot"}
                         </span>
                       </div>
 
-                      {/* Dropdown Selector */}
-                      <select
-                        className="input w-full font-medium"
-                        value={selectedSlotTypeId ?? ""}
-                        onChange={(e) => setSelectedSlotTypeId(e.target.value ? Number(e.target.value) : null)}
-                      >
-                        <option value="">Auto-Assign (Any Available Slot)</option>
-                        {slotTypes.map((st) => (
-                          <option key={st.value} value={st.value}>
-                            {st.label} ({st.available_count ?? 0} free)
-                          </option>
-                        ))}
-                      </select>
-
-                      {/* Quick Selection Buttons Grid */}
-                      <div className="grid grid-cols-2 gap-1.5 pt-1 max-h-36 overflow-y-auto pr-0.5">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                         <button
                           type="button"
                           onClick={() => setSelectedSlotTypeId(null)}
-                          className={`rounded-lg border px-2.5 py-2 text-left text-xs transition cursor-pointer ${
+                          className={`flex flex-col justify-between rounded-xl p-2 text-left transition cursor-pointer border ${
                             selectedSlotTypeId === null
-                              ? "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold ring-1 ring-emerald-500/30"
-                              : "border-border bg-surface-2 hover:border-muted text-muted hover:text-foreground"
+                              ? "border-emerald-500 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-2 ring-emerald-500/30 font-bold shadow-xs"
+                              : "border-border bg-surface-2/70 hover:border-muted text-muted hover:text-foreground"
                           }`}
                         >
-                          <div className="flex items-center justify-between">
-                            <span>Any Available</span>
-                            <span className="text-[10px] opacity-75">Auto</span>
-                          </div>
+                          <span className="text-xs font-semibold leading-tight">Any Slot</span>
+                          <span className="text-[10px] mt-1 font-mono text-muted">Auto-assign</span>
                         </button>
+
                         {slotTypes.map((st) => {
                           const isSelected = selectedSlotTypeId === st.value;
                           const count = st.available_count ?? 0;
+                          const isAvailable = count > 0;
+
                           return (
                             <button
                               key={st.value}
                               type="button"
+                              disabled={!isAvailable}
                               onClick={() => setSelectedSlotTypeId(st.value)}
-                              className={`rounded-lg border px-2.5 py-2 text-left text-xs transition cursor-pointer ${
+                              className={`flex flex-col justify-between rounded-xl p-2 text-left transition cursor-pointer border ${
                                 isSelected
-                                  ? "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold ring-1 ring-emerald-500/30"
-                                  : count === 0
-                                  ? "border-border/50 opacity-40 bg-surface-2 text-muted cursor-not-allowed"
-                                  : "border-border bg-surface-2 hover:border-muted text-foreground"
+                                  ? "border-emerald-500 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-2 ring-emerald-500/30 font-bold shadow-xs"
+                                  : !isAvailable
+                                  ? "border-border/40 bg-surface-2/30 opacity-40 cursor-not-allowed text-muted"
+                                  : "border-border bg-surface-2/70 hover:border-emerald-500/50 hover:bg-surface-2 text-foreground"
                               }`}
                             >
-                              <div className="flex items-center justify-between">
-                                <span className="truncate">{st.label}</span>
+                              <span className="text-xs font-semibold truncate leading-tight">{st.label}</span>
+                              <div className="mt-1 flex items-center justify-between">
                                 <span
-                                  className={`text-[10px] px-1 py-0.2 rounded font-mono ${
+                                  className={`text-[10px] font-mono px-1.5 py-0.2 rounded font-semibold ${
                                     count > 0
-                                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-semibold"
+                                      ? isSelected
+                                        ? "bg-emerald-500 text-white"
+                                        : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
                                       : "bg-rose-500/15 text-rose-500"
                                   }`}
                                 >
-                                  {count}
+                                  {count} free
                                 </span>
                               </div>
                             </button>
@@ -829,22 +817,24 @@ export function PlateScanner({
                       </div>
                     </div>
 
-                    <div className="pt-2 flex gap-2">
+                    {/* Action Buttons Footer */}
+                    <div className="flex items-center gap-2 pt-1 border-t border-border/60">
                       <button
                         type="button"
                         onClick={handleCancelEntry}
-                        className="btn flex-1 text-xs py-2.5 cursor-pointer font-semibold"
+                        className="btn text-xs py-2 px-3 font-semibold text-muted hover:text-foreground cursor-pointer"
                       >
-                        ✕ Rescan
+                        Cancel
                       </button>
+
                       <button
                         type="button"
                         onClick={() => handleConfirmEntry(selectedSlotTypeId)}
                         disabled={processing}
-                        className="btn-primary flex-2 text-xs py-2.5 cursor-pointer font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md flex items-center justify-center gap-1.5"
+                        className="btn-primary flex-1 text-xs sm:text-sm py-2 px-4 font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer transition transform active:scale-95"
                       >
                         <Icon name="check" className="h-4 w-4" />
-                        <span>Confirm & Allocate Slot</span>
+                        <span>Confirm Check-In & Fill Slot</span>
                       </button>
                     </div>
                   </div>
