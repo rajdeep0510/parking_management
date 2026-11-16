@@ -70,6 +70,11 @@ export function PlateScanner({
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isCameraActive, setIsCameraActive] = useState<boolean>(true);
+  const [lastScannedImage, setLastScannedImage] = useState<string | null>(null);
+  const [lastScannedPlate, setLastScannedPlate] = useState<string | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
   const [ocrStatus, setOcrStatus] = useState<string>("Initializing OCR engine…");
   const [candidatePlate, setCandidatePlate] = useState<string | null>(null);
   const [processing, setProcessing] = useState<boolean>(false);
@@ -150,46 +155,94 @@ export function PlateScanner({
     getCameras();
   }, [selectedDeviceId]);
 
-  // 3. Start Camera Stream
-  useEffect(() => {
-    let stream: MediaStream | null = null;
-    let cancelled = false;
-
-    async function startCamera() {
-      setCameraError(null);
+  // 3. Camera lifecycle handlers
+  const stopCamera = useCallback((captureSnapshot = true) => {
+    if (captureSnapshot && videoRef.current && videoRef.current.videoWidth > 0) {
       try {
-        const constraints: MediaStreamConstraints = {
-          video: selectedDeviceId
-            ? { deviceId: { exact: selectedDeviceId } }
-            : { facingMode: { ideal: "environment" }, width: { ideal: 1280 } },
-        };
-        const s = await navigator.mediaDevices.getUserMedia(constraints);
-        if (cancelled) {
-          s.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        stream = s;
-        if (videoRef.current) {
-          videoRef.current.srcObject = s;
-          videoRef.current.play();
+        const snapCanvas = document.createElement("canvas");
+        snapCanvas.width = videoRef.current.videoWidth;
+        snapCanvas.height = videoRef.current.videoHeight;
+        const snapCtx = snapCanvas.getContext("2d");
+        if (snapCtx) {
+          snapCtx.drawImage(videoRef.current, 0, 0);
+          setLastScannedImage(snapCanvas.toDataURL("image/jpeg", 0.85));
         }
       } catch (err) {
-        console.error("Camera access error:", err);
-        setCameraError(
-          "Could not access camera. Please allow camera permissions or test using manual plate input below."
-        );
+        console.warn("Failed to capture snapshot:", err);
       }
     }
 
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraActive(false);
+  }, []);
+
+  const startCamera = useCallback(async () => {
+    setCameraError(null);
+    setLastScannedImage(null);
+    setCandidatePlate(null);
+    setLastScannedPlate(null);
+    try {
+      const constraints: MediaStreamConstraints = {
+        video: selectedDeviceId
+          ? { deviceId: { exact: selectedDeviceId } }
+          : { facingMode: { ideal: "environment" }, width: { ideal: 1280 } },
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
+      setIsCameraActive(true);
+      setOcrStatus(
+        gateMode === "ENTRY"
+          ? "🟢 Ready for ENTRY: Scanning plate will allocate & FILL slot (OCCUPIED)."
+          : "🔴 Ready for EXIT: Scanning plate will calculate fee & EMPTY slot (AVAILABLE)."
+      );
+    } catch (err) {
+      console.error("Camera access error:", err);
+      setCameraError(
+        "Could not access camera. Please allow camera permissions or test using manual plate input below."
+      );
+      setIsCameraActive(false);
+    }
+  }, [selectedDeviceId, gateMode]);
+
+  // Start camera on mount or device switch
+  useEffect(() => {
     startCamera();
 
     return () => {
-      cancelled = true;
-      if (stream) {
-        stream.getTracks().forEach((t) => t.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
       }
     };
-  }, [selectedDeviceId]);
+  }, [startCamera]);
+
+  // Keyboard shortcut: Spacebar resumes camera if stopped
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isCameraActive && e.code === "Space") {
+        const tag = (document.activeElement?.tagName || "").toUpperCase();
+        if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
+          e.preventDefault();
+          startCamera();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isCameraActive, startCamera]);
 
   // 4. Save Vehicle to Database (Handles both ENTRY and EXIT)
   const submitToDatabase = useCallback(
@@ -382,7 +435,7 @@ export function PlateScanner({
 
   // 5. Run Recognition on Current Frame
   const analyzeFrame = useCallback(async () => {
-    if (!videoRef.current || !workerRef.current || processing) return;
+    if (!isCameraActive || !videoRef.current || !workerRef.current || processing) return;
     const video = videoRef.current;
     if (video.videoWidth === 0 || video.videoHeight === 0) return;
 
@@ -412,7 +465,11 @@ export function PlateScanner({
 
       if (extracted && extracted.isValid) {
         setCandidatePlate(extracted.plate);
-        setOcrStatus(`Plate detected: ${extracted.plate} (${extracted.format})`);
+        setLastScannedPlate(extracted.plate);
+        setOcrStatus(`🎯 Plate detected: ${extracted.plate} (${extracted.format}). Camera stopped.`);
+
+        // Stop camera on scan
+        stopCamera(true);
 
         if (autoSave) {
           await submitToDatabase(extracted.plate);
@@ -421,20 +478,20 @@ export function PlateScanner({
     } catch (err) {
       console.warn("OCR frame warning:", err);
     }
-  }, [processing, autoSave, submitToDatabase]);
+  }, [isCameraActive, processing, autoSave, submitToDatabase, stopCamera]);
 
   // 6. Continuous Auto-Scan Loop
   useEffect(() => {
-    if (!isScanning) return;
+    if (!isScanning || !isCameraActive) return;
 
     const interval = setInterval(() => {
-      if (!processing) {
+      if (!processing && isCameraActive) {
         analyzeFrame();
       }
     }, 650);
 
     return () => clearInterval(interval);
-  }, [isScanning, processing, analyzeFrame]);
+  }, [isScanning, isCameraActive, processing, analyzeFrame]);
 
   // 7. Handle Image Upload
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -452,7 +509,9 @@ export function PlateScanner({
         const extracted = extractPlateNumber(data.text);
         if (extracted && extracted.isValid) {
           setCandidatePlate(extracted.plate);
-          setOcrStatus(`Found plate: ${extracted.plate}`);
+          setLastScannedPlate(extracted.plate);
+          setOcrStatus(`Found plate: ${extracted.plate}. Camera paused.`);
+          stopCamera(false);
           if (autoSave) {
             await submitToDatabase(extracted.plate);
           }
@@ -540,14 +599,23 @@ export function PlateScanner({
             }`}
           >
             {/* Camera Viewport */}
-            <div className="relative aspect-video w-full bg-black">
+            <div className="relative aspect-video w-full bg-black overflow-hidden">
               <video
                 ref={videoRef}
                 playsInline
                 muted
                 autoPlay
-                className="h-full w-full object-cover"
+                className={`h-full w-full object-cover ${!isCameraActive ? "opacity-0" : "opacity-100"}`}
               />
+
+              {/* Frozen snapshot of scanned vehicle when camera is stopped */}
+              {!isCameraActive && lastScannedImage && (
+                <img
+                  src={lastScannedImage}
+                  alt="Scanned vehicle"
+                  className="absolute inset-0 h-full w-full object-cover filter brightness-[0.55]"
+                />
+              )}
 
               {/* Station Badge Header on Viewport */}
               <div className="absolute top-3 left-3 z-10">
@@ -563,26 +631,89 @@ export function PlateScanner({
                 </span>
               </div>
 
-              {/* Viewfinder Overlay */}
-              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                <div
-                  className={`relative h-[32%] w-[70%] rounded-lg border-2 border-dashed backdrop-blur-[0.5px] ${
-                    isEntry ? "border-emerald-400/80 bg-emerald-500/5" : "border-rose-400/80 bg-rose-500/5"
+              {/* Camera State Badge (Active vs Stopped) */}
+              <div className="absolute top-3 right-3 z-10">
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold shadow-md ${
+                    isCameraActive
+                      ? "bg-black/60 text-emerald-400 border border-emerald-500/30 backdrop-blur-xs"
+                      : "bg-black/80 text-amber-300 border border-amber-500/40 backdrop-blur-xs"
                   }`}
                 >
-                  {/* Reticle Corner Marks */}
-                  <div className={`absolute -left-1 -top-1 h-4 w-4 border-l-4 border-t-4 ${isEntry ? "border-emerald-500" : "border-rose-500"}`} />
-                  <div className={`absolute -right-1 -top-1 h-4 w-4 border-r-4 border-t-4 ${isEntry ? "border-emerald-500" : "border-rose-500"}`} />
-                  <div className={`absolute -bottom-1 -left-1 h-4 w-4 border-b-4 border-l-4 ${isEntry ? "border-emerald-500" : "border-rose-500"}`} />
-                  <div className={`absolute -bottom-1 -right-1 h-4 w-4 border-b-4 border-r-4 ${isEntry ? "border-emerald-500" : "border-rose-500"}`} />
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      isCameraActive ? "animate-pulse bg-emerald-400" : "bg-amber-400"
+                    }`}
+                  />
+                  {isCameraActive ? "CAMERA LIVE" : "CAMERA STOPPED"}
+                </span>
+              </div>
 
-                  <div className="flex h-full items-center justify-center">
-                    <span className="rounded bg-black/60 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-white">
-                      Align Number Plate Here
+              {/* Viewfinder Overlay (Shown when camera is active) */}
+              {isCameraActive && (
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                  <div
+                    className={`relative h-[32%] w-[70%] rounded-lg border-2 border-dashed backdrop-blur-[0.5px] ${
+                      isEntry ? "border-emerald-400/80 bg-emerald-500/5" : "border-rose-400/80 bg-rose-500/5"
+                    }`}
+                  >
+                    {/* Reticle Corner Marks */}
+                    <div className={`absolute -left-1 -top-1 h-4 w-4 border-l-4 border-t-4 ${isEntry ? "border-emerald-500" : "border-rose-500"}`} />
+                    <div className={`absolute -right-1 -top-1 h-4 w-4 border-r-4 border-t-4 ${isEntry ? "border-emerald-500" : "border-rose-500"}`} />
+                    <div className={`absolute -bottom-1 -left-1 h-4 w-4 border-b-4 border-l-4 ${isEntry ? "border-emerald-500" : "border-rose-500"}`} />
+                    <div className={`absolute -bottom-1 -right-1 h-4 w-4 border-b-4 border-r-4 ${isEntry ? "border-emerald-500" : "border-rose-500"}`} />
+
+                    <div className="flex h-full items-center justify-center">
+                      <span className="rounded bg-black/60 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-white">
+                        Align Number Plate Here
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* CAMERA STOPPED OVERLAY & "START CAMERA" PROMINENT BUTTON */}
+              {!isCameraActive && (
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/65 backdrop-blur-[2px] p-4 text-center">
+                  <div className="w-full max-w-sm rounded-2xl border border-border/80 bg-surface/95 p-5 shadow-2xl backdrop-blur-md text-foreground space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-500 ring-1 ring-emerald-500/30">
+                      <Icon name="check" className="h-6 w-6" />
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted block">
+                        Plate Scanned • Camera Stopped
+                      </span>
+                      {lastScannedPlate && (
+                        <div className="font-mono text-xl font-bold tracking-widest text-accent">
+                          {lastScannedPlate}
+                        </div>
+                      )}
+                      <p className="text-xs text-muted">
+                        {isEntry
+                          ? "Check-in completed. Gate barrier ready for next car."
+                          : "Check-out completed. Fee calculated & slot freed."}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => startCamera()}
+                      className={`w-full py-3 px-4 rounded-xl font-bold text-xs sm:text-sm text-white shadow-lg flex items-center justify-center gap-2 cursor-pointer transition transform active:scale-95 ${
+                        isEntry
+                          ? "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/25"
+                          : "bg-rose-600 hover:bg-rose-500 shadow-rose-500/25"
+                      }`}
+                    >
+                      <Icon name="camera" className="h-4 w-4" />
+                      <span>START CAMERA (SCAN NEXT VEHICLE)</span>
+                    </button>
+                    <span className="text-[10px] text-muted block">
+                      Tip: Press <kbd className="px-1.5 py-0.5 rounded bg-surface-2 border border-border font-mono text-[10px]">Space</kbd> on keyboard to resume camera
                     </span>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Live Status Overlay Bar */}
               <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/85 via-black/60 to-transparent p-3 text-white">
@@ -592,7 +723,7 @@ export function PlateScanner({
                       className={`h-2.5 w-2.5 rounded-full ${
                         processing
                           ? "animate-ping bg-amber-400"
-                          : isScanning
+                          : isCameraActive && isScanning
                           ? isEntry
                             ? "animate-pulse bg-emerald-400"
                             : "animate-pulse bg-rose-400"
@@ -623,9 +754,27 @@ export function PlateScanner({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => (isCameraActive ? stopCamera(false) : startCamera())}
+                  className={`btn text-xs font-semibold flex items-center gap-1.5 cursor-pointer ${
+                    !isCameraActive
+                      ? isEntry
+                        ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                        : "bg-rose-600 text-white hover:bg-rose-700"
+                      : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  <Icon name="camera" className="h-4 w-4" />
+                  {isCameraActive ? "⏹ Stop Camera" : "▶ Start Camera"}
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => setIsScanning(!isScanning)}
-                  className={`btn text-xs font-semibold ${
-                    isScanning
+                  disabled={!isCameraActive}
+                  className={`btn text-xs font-semibold cursor-pointer ${
+                    !isCameraActive
+                      ? "opacity-50 cursor-not-allowed"
+                      : isScanning
                       ? isEntry
                         ? "border-emerald-500/50 text-emerald-600 dark:text-emerald-400"
                         : "border-rose-500/50 text-rose-600 dark:text-rose-400"
@@ -638,8 +787,8 @@ export function PlateScanner({
                 <button
                   type="button"
                   onClick={() => analyzeFrame()}
-                  disabled={processing}
-                  className="btn text-xs"
+                  disabled={processing || !isCameraActive}
+                  className="btn text-xs cursor-pointer"
                 >
                   Snap Frame
                 </button>
