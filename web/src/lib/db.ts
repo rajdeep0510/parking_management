@@ -10,16 +10,24 @@ types.setTypeParser(20, (v) => Number(v)); // bigint (count(*))
 
 const globalForPg = globalThis as unknown as { pgPool?: Pool };
 
+const rawUrl = process.env.DATABASE_URL;
+
+// Normalize connection string to silence pg/pg-connection-string libpq compatibility warning
+const connectionString =
+  rawUrl && rawUrl.includes("sslmode=require") && !rawUrl.includes("uselibpqcompat")
+    ? rawUrl.replace("sslmode=require", "uselibpqcompat=true&sslmode=require")
+    : rawUrl;
+
 const isCloudDb =
-  process.env.DATABASE_URL?.includes("neon.tech") ||
-  process.env.DATABASE_URL?.includes("supabase") ||
-  process.env.DATABASE_URL?.includes("pooler") ||
-  process.env.DATABASE_URL?.includes("sslmode=require");
+  connectionString?.includes("neon.tech") ||
+  connectionString?.includes("supabase") ||
+  connectionString?.includes("pooler") ||
+  connectionString?.includes("sslmode=");
 
 export const pool =
   globalForPg.pgPool ??
   new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString,
     ssl: isCloudDb ? { rejectUnauthorized: false } : undefined,
   });
 
