@@ -12,6 +12,7 @@ export async function POST(request: Request) {
     const gateId = body.entry_gate_id ? Number(body.entry_gate_id) : null;
     let typeId = body.type_id ? Number(body.type_id) : null;
     const requestedSlotId = body.slot_id ? Number(body.slot_id) : null;
+    const requestedSlotTypeId = body.slot_type_id ? Number(body.slot_type_id) : null;
 
     if (!cleanReg) {
       return NextResponse.json({ success: false, error: "Registration number is required." }, { status: 400 });
@@ -80,31 +81,31 @@ export async function POST(request: Request) {
         };
       }
 
-      // 4. Lock available slot
-      const slot = (
-        requestedSlotId
-          ? await client.query(
-              `SELECT s.slot_id, s.slot_no, z.zone_name
-                 FROM parking_slot s
-                 JOIN parking_zone z ON z.zone_id = s.zone_id
-                WHERE s.slot_id = $1 AND s.availability_status = 'AVAILABLE'
-                FOR UPDATE`,
-              [requestedSlotId],
-            )
-          : await client.query(
-              `SELECT s.slot_id, s.slot_no, z.zone_name
-                 FROM parking_slot s
-                 JOIN parking_zone z ON z.zone_id = s.zone_id
-                WHERE s.availability_status = 'AVAILABLE'
-                ORDER BY (s.zone_id = $1) DESC, s.slot_no
-                LIMIT 1
-                FOR UPDATE`,
-              [gate.zone_id],
-            )
-      ).rows[0];
+      // 4. Lock available slot (matching requested slot_type_id if provided)
+      let slotQuery = `
+        SELECT s.slot_id, s.slot_no, z.zone_name, st.slot_type_name
+          FROM parking_slot s
+          JOIN parking_zone z ON z.zone_id = s.zone_id
+          JOIN slot_type st ON st.slot_type_id = s.slot_type_id
+         WHERE s.availability_status = 'AVAILABLE'
+      `;
+      const queryParams: unknown[] = [];
+
+      if (requestedSlotId) {
+        queryParams.push(requestedSlotId);
+        slotQuery += ` AND s.slot_id = $${queryParams.length}`;
+      } else if (requestedSlotTypeId) {
+        queryParams.push(requestedSlotTypeId);
+        slotQuery += ` AND s.slot_type_id = $${queryParams.length}`;
+      }
+
+      queryParams.push(gate.zone_id);
+      slotQuery += ` ORDER BY (s.zone_id = $${queryParams.length}) DESC, s.slot_no LIMIT 1 FOR UPDATE OF s`;
+
+      const slot = (await client.query(slotQuery, queryParams)).rows[0];
 
       if (!slot) {
-        return { noSlots: true };
+        return { noSlots: true, requestedSlotTypeId };
       }
 
       // 5. Issue ticket
@@ -124,6 +125,7 @@ export async function POST(request: Request) {
         success: true,
         ticketNo: ticket.ticket_no as number,
         slotNo: slot.slot_no as string,
+        slotTypeName: slot.slot_type_name as string,
         zoneName: slot.zone_name as string,
         entryTime: ticket.entry_time as string,
         gateNumber: gate.gate_number as string,
@@ -147,7 +149,9 @@ export async function POST(request: Request) {
         {
           success: false,
           status: "NO_SLOTS",
-          message: "Parking lot is full. No available slots found.",
+          message: result.requestedSlotTypeId
+            ? "No available slots of the selected slot type. Please choose another type or any available slot."
+            : "Parking lot is full. No available slots found.",
         },
         { status: 409 },
       );
@@ -155,10 +159,11 @@ export async function POST(request: Request) {
 
     revalidatePath("/", "layout");
 
+    const typeDesc = result.slotTypeName ? ` [${result.slotTypeName}]` : "";
     return NextResponse.json({
       success: true,
       status: "PARKED",
-      message: `Ticket #${result.ticketNo} issued for ${result.registrationNo} in slot ${result.slotNo} (${result.zoneName}).`,
+      message: `Ticket #${result.ticketNo} issued for ${result.registrationNo} in slot ${result.slotNo}${typeDesc} (${result.zoneName}).`,
       data: result,
     });
   } catch (err) {

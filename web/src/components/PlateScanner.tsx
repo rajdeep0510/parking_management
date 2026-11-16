@@ -14,6 +14,13 @@ export type GateOption = {
   zone_name: string;
 };
 
+export type SlotTypeOption = {
+  value: number;
+  label: string;
+  description?: string;
+  available_count?: number;
+};
+
 type TypeOption = { value: number; label: string };
 
 type SessionActivity = {
@@ -23,6 +30,7 @@ type SessionActivity = {
   registrationNo: string;
   scannedReg?: string;
   slotNo: string;
+  slotTypeName?: string;
   zoneName: string;
   time: string;
   status: "SUCCESS" | "ALREADY_PARKED" | "NOT_PARKED" | "NO_SLOTS";
@@ -36,11 +44,13 @@ type SessionActivity = {
 export function PlateScanner({
   gates,
   vehicleTypes,
+  slotTypes = [],
   initialMode = "ENTRY",
   initialGateId,
 }: {
   gates: GateOption[];
   vehicleTypes: TypeOption[];
+  slotTypes?: SlotTypeOption[];
   initialMode?: "ENTRY" | "EXIT";
   initialGateId?: number;
 }) {
@@ -77,6 +87,11 @@ export function PlateScanner({
 
   const [ocrStatus, setOcrStatus] = useState<string>("Initializing OCR engine…");
   const [candidatePlate, setCandidatePlate] = useState<string | null>(null);
+  const [pendingEntryPlate, setPendingEntryPlate] = useState<string | null>(null);
+  const [selectedSlotTypeId, setSelectedSlotTypeId] = useState<number | null>(() => {
+    const standard = slotTypes.find((s) => s.label.toLowerCase() === "standard");
+    return standard ? standard.value : slotTypes[0]?.value ?? null;
+  });
   const [processing, setProcessing] = useState<boolean>(false);
   const [flashSuccess, setFlashSuccess] = useState<boolean>(false);
   const [recentActivities, setRecentActivities] = useState<SessionActivity[]>([]);
@@ -246,9 +261,11 @@ export function PlateScanner({
 
   // 4. Save Vehicle to Database (Handles both ENTRY and EXIT)
   const submitToDatabase = useCallback(
-    async (plate: string) => {
+    async (plate: string, overrideSlotTypeId?: number | null) => {
       const cleanPlate = plate.trim().toUpperCase();
       if (!cleanPlate || !selectedGate) return;
+
+      const slotTypeToSend = overrideSlotTypeId !== undefined ? overrideSlotTypeId : selectedSlotTypeId;
 
       // Check cooldown (skip cooldown if manually typed)
       const now = Date.now();
@@ -271,6 +288,7 @@ export function PlateScanner({
               registration_no: cleanPlate,
               entry_gate_id: selectedGate,
               type_id: selectedType,
+              slot_type_id: slotTypeToSend || undefined,
             }),
           });
 
@@ -288,14 +306,16 @@ export function PlateScanner({
               ticketNo: data.data.ticketNo,
               registrationNo: data.data.registrationNo,
               slotNo: data.data.slotNo,
+              slotTypeName: data.data.slotTypeName,
               zoneName: data.data.zoneName,
               time: data.data.entryTime,
               status: "SUCCESS",
               isNewVehicle: data.data.isNewVehicle,
             };
             setRecentActivities((prev) => [activity, ...prev.slice(0, 19)]);
+            const slotTypeLabel = data.data.slotTypeName ? ` (${data.data.slotTypeName})` : "";
             setOcrStatus(
-              `✅ ENTRY: Ticket #${data.data.ticketNo} issued! Slot ${data.data.slotNo} is now FILLED (OCCUPIED).`
+              `✅ ENTRY: Ticket #${data.data.ticketNo} issued! Slot ${data.data.slotNo}${slotTypeLabel} is now FILLED (OCCUPIED).`
             );
           } else if (data.status === "ALREADY_PARKED") {
             const activity: SessionActivity = {
@@ -311,7 +331,7 @@ export function PlateScanner({
             setRecentActivities((prev) => [activity, ...prev.slice(0, 19)]);
             setOcrStatus(`⚠️ ${cleanPlate} is ALREADY PARKED (Ticket #${data.ticketNo} in Slot ${data.slotNo}).`);
           } else if (data.status === "NO_SLOTS") {
-            setOcrStatus(`❌ Lot is full: No available slots for ${cleanPlate}.`);
+            setOcrStatus(`❌ ${data.message || `No available slots for ${cleanPlate}.`}`);
           } else {
             setOcrStatus(`Error: ${data.error || "Failed to process entry."}`);
           }
@@ -381,7 +401,7 @@ export function PlateScanner({
         setProcessing(false);
       }
     },
-    [gateMode, selectedGate, selectedType]
+    [gateMode, selectedGate, selectedType, selectedSlotTypeId]
   );
 
   // Directly exit a ticket (e.g. from suggestion or manual selection)
@@ -471,14 +491,21 @@ export function PlateScanner({
         // Stop camera on scan
         stopCamera(true);
 
-        if (autoSave) {
-          await submitToDatabase(extracted.plate);
+        if (gateMode === "ENTRY") {
+          // Present option to enter/choose slot type
+          setPendingEntryPlate(extracted.plate);
+          setOcrStatus(`🚗 Plate ${extracted.plate} captured! Select slot type to allocate.`);
+        } else {
+          // Exit gate: process checkout
+          if (autoSave) {
+            await submitToDatabase(extracted.plate);
+          }
         }
       }
     } catch (err) {
       console.warn("OCR frame warning:", err);
     }
-  }, [isCameraActive, processing, autoSave, submitToDatabase, stopCamera]);
+  }, [isCameraActive, processing, autoSave, gateMode, submitToDatabase, stopCamera]);
 
   // 6. Continuous Auto-Scan Loop
   useEffect(() => {
@@ -512,8 +539,13 @@ export function PlateScanner({
           setLastScannedPlate(extracted.plate);
           setOcrStatus(`Found plate: ${extracted.plate}. Camera paused.`);
           stopCamera(false);
-          if (autoSave) {
-            await submitToDatabase(extracted.plate);
+          if (gateMode === "ENTRY") {
+            setPendingEntryPlate(extracted.plate);
+            setOcrStatus(`🚗 Photo plate ${extracted.plate} found! Select slot type to allocate.`);
+          } else {
+            if (autoSave) {
+              await submitToDatabase(extracted.plate);
+            }
           }
         } else {
           setOcrStatus(`Could not detect plate. Text found: "${data.text.trim()}"`);
@@ -531,8 +563,30 @@ export function PlateScanner({
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualPlate.trim()) return;
-    submitToDatabase(manualPlate.trim());
+    const plate = manualPlate.trim();
     setManualPlate("");
+
+    if (gateMode === "ENTRY") {
+      setCandidatePlate(plate);
+      setLastScannedPlate(plate);
+      setPendingEntryPlate(plate);
+      stopCamera(false);
+      setOcrStatus(`🚗 Plate ${plate} entered! Select slot type to allocate.`);
+    } else {
+      submitToDatabase(plate);
+    }
+  };
+
+  const handleConfirmEntry = async (slotTypeIdToUse: number | null) => {
+    if (!pendingEntryPlate) return;
+    const plate = pendingEntryPlate;
+    setPendingEntryPlate(null);
+    await submitToDatabase(plate, slotTypeIdToUse);
+  };
+
+  const handleCancelEntry = () => {
+    setPendingEntryPlate(null);
+    startCamera();
   };
 
   const isEntry = gateMode === "ENTRY";
@@ -672,8 +726,133 @@ export function PlateScanner({
                 </div>
               )}
 
-              {/* CAMERA STOPPED OVERLAY & "START CAMERA" PROMINENT BUTTON */}
-              {!isCameraActive && (
+              {/* 1. SLOT TYPE SELECTION PROMPT (Appears after plate is captured at Entry Gate) */}
+              {pendingEntryPlate && isEntry && (
+                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/75 backdrop-blur-xs p-4 text-center">
+                  <div className="w-full max-w-md rounded-2xl border border-emerald-500/40 bg-surface/98 p-5 shadow-2xl backdrop-blur-md text-foreground space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="flex items-center justify-between border-b border-border pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                          Step 2 • Select Slot Type
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCancelEntry}
+                        className="text-xs text-muted hover:text-foreground cursor-pointer px-1.5 py-0.5 rounded hover:bg-surface-2"
+                      >
+                        ✕ Cancel
+                      </button>
+                    </div>
+
+                    <div className="text-left space-y-1">
+                      <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">
+                        Captured License Plate
+                      </span>
+                      <div className="font-mono text-2xl font-black tracking-wider text-accent bg-accent-soft/30 px-3 py-1.5 rounded-lg border border-accent/20">
+                        {pendingEntryPlate}
+                      </div>
+                    </div>
+
+                    <div className="text-left space-y-2">
+                      <div className="flex items-center justify-between text-xs font-semibold text-foreground">
+                        <span>Choose Slot Type:</span>
+                        <span className="text-[11px] font-normal text-muted">
+                          {selectedSlotTypeId
+                            ? `${slotTypes.find((s) => s.value === selectedSlotTypeId)?.available_count ?? 0} free`
+                            : "Any free slot"}
+                        </span>
+                      </div>
+
+                      {/* Dropdown Selector */}
+                      <select
+                        className="input w-full font-medium"
+                        value={selectedSlotTypeId ?? ""}
+                        onChange={(e) => setSelectedSlotTypeId(e.target.value ? Number(e.target.value) : null)}
+                      >
+                        <option value="">Auto-Assign (Any Available Slot)</option>
+                        {slotTypes.map((st) => (
+                          <option key={st.value} value={st.value}>
+                            {st.label} ({st.available_count ?? 0} free)
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* Quick Selection Buttons Grid */}
+                      <div className="grid grid-cols-2 gap-1.5 pt-1 max-h-36 overflow-y-auto pr-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSlotTypeId(null)}
+                          className={`rounded-lg border px-2.5 py-2 text-left text-xs transition cursor-pointer ${
+                            selectedSlotTypeId === null
+                              ? "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold ring-1 ring-emerald-500/30"
+                              : "border-border bg-surface-2 hover:border-muted text-muted hover:text-foreground"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span>Any Available</span>
+                            <span className="text-[10px] opacity-75">Auto</span>
+                          </div>
+                        </button>
+                        {slotTypes.map((st) => {
+                          const isSelected = selectedSlotTypeId === st.value;
+                          const count = st.available_count ?? 0;
+                          return (
+                            <button
+                              key={st.value}
+                              type="button"
+                              onClick={() => setSelectedSlotTypeId(st.value)}
+                              className={`rounded-lg border px-2.5 py-2 text-left text-xs transition cursor-pointer ${
+                                isSelected
+                                  ? "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold ring-1 ring-emerald-500/30"
+                                  : count === 0
+                                  ? "border-border/50 opacity-40 bg-surface-2 text-muted cursor-not-allowed"
+                                  : "border-border bg-surface-2 hover:border-muted text-foreground"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="truncate">{st.label}</span>
+                                <span
+                                  className={`text-[10px] px-1 py-0.2 rounded font-mono ${
+                                    count > 0
+                                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-semibold"
+                                      : "bg-rose-500/15 text-rose-500"
+                                  }`}
+                                >
+                                  {count}
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="pt-2 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleCancelEntry}
+                        className="btn flex-1 text-xs py-2.5 cursor-pointer font-semibold"
+                      >
+                        ✕ Rescan
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleConfirmEntry(selectedSlotTypeId)}
+                        disabled={processing}
+                        className="btn-primary flex-2 text-xs py-2.5 cursor-pointer font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md flex items-center justify-center gap-1.5"
+                      >
+                        <Icon name="check" className="h-4 w-4" />
+                        <span>Confirm & Allocate Slot</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 2. CAMERA STOPPED OVERLAY & "START CAMERA" PROMINENT BUTTON (Shown when no pending slot type confirmation) */}
+              {!isCameraActive && !pendingEntryPlate && (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/65 backdrop-blur-[2px] p-4 text-center">
                   <div className="w-full max-w-sm rounded-2xl border border-border/80 bg-surface/95 p-5 shadow-2xl backdrop-blur-md text-foreground space-y-4 animate-in fade-in zoom-in-95 duration-200">
                     <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-500 ring-1 ring-emerald-500/30">
@@ -899,6 +1078,24 @@ export function PlateScanner({
                   </select>
                 </label>
               )}
+
+              {isEntry && slotTypes.length > 0 && (
+                <label className="block">
+                  <span className="label">Default Slot Type</span>
+                  <select
+                    className="input"
+                    value={selectedSlotTypeId ?? ""}
+                    onChange={(e) => setSelectedSlotTypeId(e.target.value ? Number(e.target.value) : null)}
+                  >
+                    <option value="">Auto-Assign (Any Available)</option>
+                    {slotTypes.map((st) => (
+                      <option key={st.value} value={st.value}>
+                        {st.label} ({st.available_count ?? 0} free)
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -972,7 +1169,13 @@ export function PlateScanner({
                       <div className="space-y-1 text-muted">
                         <div className="flex items-center justify-between">
                           <span>
-                            Slot: <strong className="text-foreground">{t.slotNo}</strong> ({t.zoneName})
+                            Slot: <strong className="text-foreground">{t.slotNo}</strong>{" "}
+                            {t.slotTypeName && (
+                              <span className="text-[10px] text-accent font-semibold px-1.5 py-0.5 rounded bg-accent-soft/40 border border-accent/20">
+                                {t.slotTypeName}
+                              </span>
+                            )}{" "}
+                            ({t.zoneName})
                           </span>
                           <span className="text-[11px] font-semibold text-rose-500 bg-rose-500/10 px-1.5 py-0.5 rounded">
                             FILLED → OCCUPIED

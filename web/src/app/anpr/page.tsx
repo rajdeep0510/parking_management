@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { query } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { PlateScanner, type GateOption } from "@/components/PlateScanner";
+import { PlateScanner, type GateOption, type SlotTypeOption } from "@/components/PlateScanner";
 
 type TypeOption = { value: number; label: string };
 
@@ -23,7 +23,7 @@ export default function AnprPage({ searchParams }: PageProps) {
 }
 
 async function AnprContent({ searchParams }: PageProps) {
-  const [params, user, gates, vehicleTypes] = await Promise.all([
+  const [params, user, gates, vehicleTypes, slotTypes] = await Promise.all([
     searchParams ? searchParams : Promise.resolve({} as { mode?: string; gateId?: string }),
     getCurrentUser(),
     query<GateOption>(
@@ -38,6 +38,16 @@ async function AnprContent({ searchParams }: PageProps) {
         ORDER BY g.gate_type, g.gate_number`
     ),
     query<TypeOption>("SELECT type_id AS value, type_name AS label FROM vehicle_type ORDER BY type_name"),
+    query<SlotTypeOption>(
+      `SELECT st.slot_type_id AS value,
+              st.slot_type_name AS label,
+              st.description,
+              COUNT(CASE WHEN s.availability_status = 'AVAILABLE' THEN 1 END)::int AS available_count
+         FROM slot_type st
+         LEFT JOIN parking_slot s ON s.slot_type_id = st.slot_type_id
+        GROUP BY st.slot_type_id, st.slot_type_name, st.description
+        ORDER BY st.slot_type_id`
+    ),
   ]);
 
   const requestedMode = (params.mode?.toUpperCase() === "EXIT" ? "EXIT" : params.mode?.toUpperCase() === "ENTRY" ? "ENTRY" : user?.gate_mode || "ENTRY") as "ENTRY" | "EXIT";
@@ -83,6 +93,7 @@ async function AnprContent({ searchParams }: PageProps) {
         <PlateScanner
           gates={gates}
           vehicleTypes={vehicleTypes}
+          slotTypes={slotTypes}
           initialMode={requestedMode}
           initialGateId={requestedGateId}
         />
