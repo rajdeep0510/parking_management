@@ -5,6 +5,8 @@ import { RowForm, type FormField } from "./RowForm";
 import { DeleteButton } from "./DeleteButton";
 import { StatusBadge, isStatus } from "./StatusBadge";
 import { Icon } from "./Icon";
+import { LicensePlate } from "./LicensePlate";
+import { VehicleBadge } from "./VehicleBadge";
 
 /** Resolves a table's form fields, running lookup queries for foreign-key dropdowns. */
 export function loadFormFields(cfg: TableConfig): Promise<FormField[]> {
@@ -40,20 +42,22 @@ export async function CrudPage({
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="animate-reveal">
         <h1 className="page-title">{cfg.title}</h1>
         <p className="page-subtitle">
           {rows.length} {rows.length === 1 ? "record" : "records"}
         </p>
       </div>
-      <RowForm
-        tableKey={tableKey}
-        fields={fields}
-        initial={editing}
-        pkValue={editing ? String(editing[cfg.pk]) : null}
-        cancelHref={cfg.path}
-      />
-      <div className="card overflow-hidden p-0 md:overflow-x-auto">
+      <div className="animate-reveal-stagger-1">
+        <RowForm
+          tableKey={tableKey}
+          fields={fields}
+          initial={editing}
+          pkValue={editing ? String(editing[cfg.pk]) : null}
+          cancelHref={cfg.path}
+        />
+      </div>
+      <div className="card animate-reveal-stagger-2 overflow-hidden p-0 md:overflow-x-auto">
         <table className="table table-stack">
           <thead>
             <tr>
@@ -77,7 +81,15 @@ export async function CrudPage({
                 <tr key={id}>
                   {cfg.columns.map((c) => (
                     <td key={c.key} data-label={c.label}>
-                      {isStatus(r[c.key]) ? <StatusBadge value={r[c.key]} /> : (r[c.key] ?? "—")}
+                      {isStatus(r[c.key]) ? (
+                        <StatusBadge value={r[c.key]} />
+                      ) : c.key === "registration_no" && r[c.key] ? (
+                        <LicensePlate plate={String(r[c.key])} size="sm" />
+                      ) : c.key === "type_name" && r[c.key] ? (
+                        <VehicleBadge typeName={String(r[c.key])} />
+                      ) : (
+                        (r[c.key] ?? "—")
+                      )}
                     </td>
                   ))}
                   <td className="cell-actions">

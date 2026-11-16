@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createWorker, Worker } from "tesseract.js";
 import { extractPlateNumber, preprocessCanvasForOcr, playSuccessChime, formatPlateAsYouType } from "@/lib/anpr";
 import { Icon } from "./Icon";
+import { LicensePlate } from "./LicensePlate";
 
 export type GateOption = {
   value: number;
@@ -539,8 +540,8 @@ export function PlateScanner({
                 : ""
             }`}
           >
-            {/* Camera Viewport */}
-            <div className="relative aspect-video w-full bg-black">
+            {/* Camera Viewport with Futuristic HUD */}
+            <div className="relative aspect-video w-full bg-slate-950 overflow-hidden select-none">
               <video
                 ref={videoRef}
                 playsInline
@@ -549,44 +550,98 @@ export function PlateScanner({
                 className="h-full w-full object-cover"
               />
 
-              {/* Station Badge Header on Viewport */}
-              <div className="absolute top-3 left-3 z-10">
-                <span
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-bold tracking-wide shadow-md ${
-                    isEntry
-                      ? "bg-emerald-600 text-white"
-                      : "bg-rose-600 text-white"
-                  }`}
-                >
-                  <Icon name="gate" className="h-4 w-4" />
-                  {isEntry ? "ENTRY CAMERA" : "EXIT CAMERA"}
-                </span>
-              </div>
+              {/* HUD Top Bar: Recording & Telemetry */}
+              <div className="absolute top-3 inset-x-3 z-10 flex items-center justify-between text-white text-[11px] font-mono pointer-events-none">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-bold tracking-wide shadow-md backdrop-blur-md ${
+                      isEntry
+                        ? "bg-emerald-600/90 text-white border border-emerald-400/40"
+                        : "bg-rose-600/90 text-white border border-rose-400/40"
+                    }`}
+                  >
+                    <Icon name="gate" className="h-3.5 w-3.5" />
+                    {isEntry ? "ENTRY TERMINAL" : "EXIT TERMINAL"}
+                  </span>
 
-              {/* Viewfinder Overlay */}
-              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                <div
-                  className={`relative h-[32%] w-[70%] rounded-lg border-2 border-dashed backdrop-blur-[0.5px] ${
-                    isEntry ? "border-emerald-400/80 bg-emerald-500/5" : "border-rose-400/80 bg-rose-500/5"
-                  }`}
-                >
-                  {/* Reticle Corner Marks */}
-                  <div className={`absolute -left-1 -top-1 h-4 w-4 border-l-4 border-t-4 ${isEntry ? "border-emerald-500" : "border-rose-500"}`} />
-                  <div className={`absolute -right-1 -top-1 h-4 w-4 border-r-4 border-t-4 ${isEntry ? "border-emerald-500" : "border-rose-500"}`} />
-                  <div className={`absolute -bottom-1 -left-1 h-4 w-4 border-b-4 border-l-4 ${isEntry ? "border-emerald-500" : "border-rose-500"}`} />
-                  <div className={`absolute -bottom-1 -right-1 h-4 w-4 border-b-4 border-r-4 ${isEntry ? "border-emerald-500" : "border-rose-500"}`} />
+                  <span className="hidden sm:inline-flex items-center gap-1.5 rounded-md bg-black/60 px-2 py-1 backdrop-blur-md text-emerald-400 border border-white/10">
+                    <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+                    LIVE REC · 30 FPS
+                  </span>
+                </div>
 
-                  <div className="flex h-full items-center justify-center">
-                    <span className="rounded bg-black/60 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-white">
-                      Align Number Plate Here
-                    </span>
-                  </div>
+                <div className="flex items-center gap-2 text-white/80">
+                  <span className="rounded bg-black/60 px-2 py-1 backdrop-blur-md border border-white/10 hidden min-[480px]:inline-block">
+                    OPTICAL ANPR · HD
+                  </span>
                 </div>
               </div>
 
+              {/* Futuristic Viewfinder Targeting Reticle */}
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                <div
+                  className={`relative h-[34%] w-[72%] rounded-xl border-2 transition-all duration-200 backdrop-blur-[0.5px] ${
+                    candidatePlate
+                      ? isEntry
+                        ? "border-emerald-400 bg-emerald-500/10 shadow-[0_0_25px_rgba(16,185,129,0.4)]"
+                        : "border-rose-400 bg-rose-500/10 shadow-[0_0_25px_rgba(244,63,94,0.4)]"
+                      : isEntry
+                      ? "border-emerald-400/60 border-dashed bg-emerald-500/[0.03]"
+                      : "border-rose-400/60 border-dashed bg-rose-500/[0.03]"
+                  }`}
+                >
+                  {/* Precision Reticle Corner Brackets */}
+                  <div className={`absolute -left-1 -top-1 h-5 w-5 border-l-[3px] border-t-[3px] ${isEntry ? "border-emerald-400" : "border-rose-400"}`} />
+                  <div className={`absolute -right-1 -top-1 h-5 w-5 border-r-[3px] border-t-[3px] ${isEntry ? "border-emerald-400" : "border-rose-400"}`} />
+                  <div className={`absolute -bottom-1 -left-1 h-5 w-5 border-b-[3px] border-l-[3px] ${isEntry ? "border-emerald-400" : "border-rose-400"}`} />
+                  <div className={`absolute -bottom-1 -right-1 h-5 w-5 border-b-[3px] border-r-[3px] ${isEntry ? "border-emerald-400" : "border-rose-400"}`} />
+
+                  {/* Center HUD Crosshair */}
+                  <div className="absolute inset-0 flex items-center justify-center opacity-30 text-white font-mono text-xs">
+                    <span>+</span>
+                  </div>
+
+                  {/* Target Status Tag */}
+                  <div className="flex h-full items-center justify-center">
+                    {candidatePlate ? (
+                      <span className="rounded-md bg-black/80 px-2.5 py-1 text-xs font-mono font-bold uppercase tracking-wider text-emerald-400 border border-emerald-500/50 shadow-lg">
+                        🎯 TARGET LOCKED
+                      </span>
+                    ) : (
+                      <span className="rounded bg-black/60 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-white/90 backdrop-blur-sm">
+                        ALIGN LICENSE PLATE HERE
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Animated Laser Scan Beam */}
+                  {isScanning && !processing && (
+                    <div
+                      className={`laser-beam pointer-events-none absolute inset-x-2 h-0.5 rounded-full shadow-md ${
+                        isEntry
+                          ? "bg-emerald-400 shadow-emerald-400/80"
+                          : "bg-rose-400 shadow-rose-400/80"
+                      }`}
+                      aria-hidden="true"
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Radar Ripple Animation on Success */}
+              {flashSuccess && (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <span
+                    className={`h-40 w-40 rounded-full animate-ping opacity-75 ${
+                      isEntry ? "bg-emerald-500" : "bg-rose-500"
+                    }`}
+                  />
+                </div>
+              )}
+
               {/* Live Status Overlay Bar */}
-              <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/85 via-black/60 to-transparent p-3 text-white">
-                <div className="flex items-center justify-between text-xs">
+              <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent p-3.5 text-white">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                   <span className="flex items-center gap-2">
                     <span
                       className={`h-2.5 w-2.5 rounded-full ${
@@ -599,12 +654,15 @@ export function PlateScanner({
                           : "bg-gray-400"
                       }`}
                     />
-                    <span className="font-medium">{ocrStatus}</span>
+                    <span className="font-mono text-white/90">{ocrStatus}</span>
                   </span>
                   {candidatePlate && (
-                    <span className="rounded bg-accent px-2 py-0.5 font-mono text-sm font-bold tracking-wider text-white">
-                      {candidatePlate}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase font-bold text-emerald-400 hidden min-[400px]:inline">
+                        Matched:
+                      </span>
+                      <LicensePlate plate={candidatePlate} size="sm" />
+                    </div>
                   )}
                 </div>
               </div>
@@ -802,12 +860,10 @@ export function PlateScanner({
                 {recentActivities.map((t) => (
                   <div
                     key={t.id}
-                    className="rounded-xl border border-border bg-surface-2/40 p-3 text-xs space-y-1.5 transition-all"
+                    className="rounded-xl border border-border bg-surface-2/60 p-3 text-xs space-y-2 transition-all duration-150 hover:bg-surface-2 hover:shadow-xs hover:border-accent/30 animate-reveal"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-mono font-bold text-foreground text-sm">
-                        {t.registrationNo}
-                      </span>
+                      <LicensePlate plate={t.registrationNo} ticketNo={t.ticketNo} size="sm" />
                       {t.action === "ENTRY" ? (
                         <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 font-semibold text-[11px]">
                           🟢 ENTRY

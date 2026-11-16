@@ -2,6 +2,8 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { query } from "@/lib/db";
 import { Icon } from "@/components/Icon";
+import { LicensePlate } from "@/components/LicensePlate";
+import { VehicleBadge } from "@/components/VehicleBadge";
 import { cancelTicket } from "./actions";
 
 export default function TicketsPage() {
@@ -38,7 +40,7 @@ async function TicketsPageContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between gap-3">
+      <div className="animate-reveal flex items-end justify-between gap-3">
         <div>
           <h1 className="page-title">Active Tickets</h1>
           <p className="page-subtitle">
@@ -50,7 +52,7 @@ async function TicketsPageContent() {
           New entry
         </Link>
       </div>
-      <div className="card overflow-hidden p-0 md:overflow-x-auto">
+      <div className="card animate-reveal-stagger-1 overflow-hidden p-0 md:overflow-x-auto">
         <table className="table table-stack">
           <thead>
             <tr>
@@ -72,21 +74,28 @@ async function TicketsPageContent() {
               </tr>
             )}
             {tickets.map((t) => (
-              <tr key={t.ticket_no}>
+              <tr key={t.ticket_no} className="group">
                 <td className="cell-primary">
-                  <span className="font-mono font-semibold tracking-wide">{t.registration_no}</span>
-                  <span className="ml-2 text-sm font-normal text-muted">#{t.ticket_no}</span>
+                  <div className="flex items-center gap-2">
+                    <LicensePlate plate={t.registration_no} ticketNo={t.ticket_no} size="md" />
+                    <span className="text-xs font-medium text-muted">#{t.ticket_no}</span>
+                  </div>
                 </td>
-                <td data-label="Type">{t.type_name}</td>
+                <td data-label="Type">
+                  <VehicleBadge typeName={t.type_name} />
+                </td>
                 <td data-label="Slot">
-                  {t.slot_no} <span className="text-muted">· {t.zone_name}</span>
+                  <span className="font-semibold">{t.slot_no}</span>{" "}
+                  <span className="text-muted">· {t.zone_name}</span>
                 </td>
                 <td data-label="Entry gate">{t.gate_number}</td>
-                <td data-label="Entry time" className="tabular-nums">
+                <td data-label="Entry time" className="tabular-nums text-xs sm:text-sm">
                   {t.entry_time}
                 </td>
-                <td data-label="Parked for" className="tabular-nums font-medium">
-                  {t.duration}
+                <td data-label="Parked for" className="tabular-nums font-medium text-xs sm:text-sm">
+                  <span className="inline-flex items-center gap-1 rounded bg-accent-soft px-2 py-0.5 text-accent font-semibold">
+                    {t.duration}
+                  </span>
                 </td>
                 <td className="cell-actions">
                   <div className="flex justify-end gap-2">

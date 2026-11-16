@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PHP & MySQL CRUD Operations</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f7f9fc;
+            margin: 0;
+            padding: 30px;
+        }
+        .container {
+            max-width: 950px;
+            margin: auto;
+            background: #fff;
+            padding: 30px 35px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            border: 1px solid #e2e8f0;
+        }
+        h2 {
+            color: #1e293b;
+            text-align: center;
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+        h3 {
+            color: #334155;
+            margin-top: 30px;
+        }
+        .alert {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: 500;
+        }
+        .success {
+            background-color: #dcfce7;
+            color: #15803d;
+            border: 1px solid #bbf7d0;
+        }
+        form {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 25px;
+            padding: 20px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+        }
+        form input[type="text"], form input[type="email"] {
+            padding: 10px 14px;
+            width: 230px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        form input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
+        }
+        .btn {
+            padding: 10px 18px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-create {
+            background-color: #2563eb;
+            color: white;
+        }
+        .btn-create:hover { background-color: #1d4ed8; }
+        .btn-update {
+            background-color: #16a34a;
+            color: white;
+        }
+        .btn-cancel {
+            background-color: #64748b;
+            color: white;
+        }
+        .btn-edit {
+            background-color: #f59e0b;
+            color: white;
+            padding: 6px 12px;
+            font-size: 13px;
+        }
+        .btn-delete {
+            background-color: #ef4444;
+            color: white;
+            padding: 6px 12px;
+            font-size: 13px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        table th, table td {
+            border: 1px solid #e2e8f0;
+            padding: 12px 14px;
+            text-align: left;
+            font-size: 14px;
+        }
+        table th {
+            background-color: #f1f5f9;
+            color: #1e293b;
+            font-weight: 600;
+        }
+        table tr:nth-child(even) {
+            background-color: #f8fafc;
+        }
+        table tr:hover {
+            background-color: #f1f5f9;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Student Management System (PHP & MySQL CRUD)</h2>
+
+    <div id="alertBox" class="alert success">
+        Student record added successfully! (Database: student_db, Table: students)
+    </div>
+
+    <!-- Form for Create and Update -->
+    <form id="crudForm" onsubmit="handleSubmit(event)">
+        <input type="hidden" id="studentId" value="">
+        <input type="text" id="name" placeholder="Full Name" value="Alice Johnson" required>
+        <input type="email" id="email" placeholder="Email Address" value="alice@example.com" required>
+        <input type="text" id="course" placeholder="Course / Department" value="Computer Science" required>
+
+        <button type="submit" id="submitBtn" class="btn btn-create">Add Student</button>
+        <button type="button" id="cancelBtn" class="btn btn-cancel" style="display:none;" onclick="cancelEdit()">Cancel</button>
+    </form>
+
+    <!-- Table to Display Records (READ) -->
+    <h3>Registered Students List</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Course</th>
+                <th>Created At</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="studentsTableBody">
+            <tr>
+                <td>1</td>
+                <td>Alice Johnson</td>
+                <td>alice@example.com</td>
+                <td>Computer Science</td>
+                <td>2026-11-14 22:50:10</td>
+                <td>
+                    <button class="btn btn-edit" onclick="editRow(1)">Edit</button>
+                    <button class="btn btn-delete" onclick="deleteRow(1)">Delete</button>
+                </td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td>Bob Smith</td>
+                <td>bob@example.com</td>
+                <td>Information Technology</td>
+                <td>2026-11-14 22:52:18</td>
+                <td>
+                    <button class="btn btn-edit" onclick="editRow(2)">Edit</button>
+                    <button class="btn btn-delete" onclick="deleteRow(2)">Delete</button>
+                </td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td>Charlie Davis</td>
+                <td>charlie@example.com</td>
+                <td>Data Science</td>
+                <td>2026-11-14 22:55:40</td>
+                <td>
+                    <button class="btn btn-edit" onclick="editRow(3)">Edit</button>
+                    <button class="btn btn-delete" onclick="deleteRow(3)">Delete</button>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+    let students = [
+        { id: 1, name: "Alice Johnson", email: "alice@example.com", course: "Computer Science", created_at: "2026-11-14 22:50:10" },
+        { id: 2, name: "Bob Smith", email: "bob@example.com", course: "Information Technology", created_at: "2026-11-14 22:52:18" },
+        { id: 3, name: "Charlie Davis", email: "charlie@example.com", course: "Data Science", created_at: "2026-11-14 22:55:40" }
+    ];
+
+    function renderTable() {
+        const tbody = document.getElementById("studentsTableBody");
+        tbody.innerHTML = "";
+        students.forEach(s => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${s.id}</td>
+                <td>${s.name}</td>
+                <td>${s.email}</td>
+                <td>${s.course}</td>
+                <td>${s.created_at}</td>
+                <td>
+                    <button class="btn btn-edit" onclick="editRow(${s.id})">Edit</button>
+                    <button class="btn btn-delete" onclick="deleteRow(${s.id})">Delete</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function handleSubmit(e) {
+        e.preventDefault();
+        const id = document.getElementById("studentId").value;
+        const name = document.getElementById("name").value.trim();
+        const email = document.getElementById("email").value.trim();
+        const course = document.getElementById("course").value.trim();
+        const alertBox = document.getElementById("alertBox");
+
+        if (id) {
+            // Update
+            const student = students.find(s => s.id == id);
+            if (student) {
+                student.name = name;
+                student.email = email;
+                student.course = course;
+                alertBox.className = "alert success";
+                alertBox.textContent = `Student ID #${id} updated successfully!`;
+            }
+            cancelEdit();
+        } else {
+            // Create
+            const newId = students.length ? Math.max(...students.map(s => s.id)) + 1 : 1;
+            const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            students.unshift({ id: newId, name, email, course, created_at: now });
+            alertBox.className = "alert success";
+            alertBox.textContent = `Student record #${newId} created successfully!`;
+            document.getElementById("crudForm").reset();
+        }
+        renderTable();
+    }
+
+    function editRow(id) {
+        const student = students.find(s => s.id == id);
+        if (!student) return;
+        document.getElementById("studentId").value = student.id;
+        document.getElementById("name").value = student.name;
+        document.getElementById("email").value = student.email;
+        document.getElementById("course").value = student.course;
+
+        const submitBtn = document.getElementById("submitBtn");
+        submitBtn.textContent = "Update Student";
+        submitBtn.className = "btn btn-update";
+        document.getElementById("cancelBtn").style.display = "inline-block";
+        document.getElementById("alertBox").textContent = `Editing student #${id} (${student.name})...`;
+    }
+
+    function cancelEdit() {
+        document.getElementById("studentId").value = "";
+        document.getElementById("crudForm").reset();
+        const submitBtn = document.getElementById("submitBtn");
+        submitBtn.textContent = "Add Student";
+        submitBtn.className = "btn btn-create";
+        document.getElementById("cancelBtn").style.display = "none";
+    }
+
+    function deleteRow(id) {
+        if (confirm(`Are you sure you want to delete student record #${id}?`)) {
+            students = students.filter(s => s.id != id);
+            const alertBox = document.getElementById("alertBox");
+            alertBox.className = "alert success";
+            alertBox.textContent = `Student record #${id} deleted successfully!`;
+            renderTable();
+        }
+    }
+</script>
+
+</body>
+</html>
