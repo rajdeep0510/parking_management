@@ -10,9 +10,15 @@ type NavLink = readonly [href: string, label: string, icon: IconName];
 
 const NAV: readonly { heading: string; links: readonly NavLink[] }[] = [
   {
+    heading: "Overview",
+    links: [
+      ["/", "Project Landing", "badge"],
+      ["/dashboard", "Dashboard", "home"],
+    ],
+  },
+  {
     heading: "Operations",
     links: [
-      ["/", "Dashboard", "home"],
       ["/anpr", "ANPR Scanner", "camera"],
       ["/entry", "Vehicle Entry", "enter"],
       ["/tickets", "Active Tickets", "ticket"],
@@ -55,7 +61,7 @@ const NAV: readonly { heading: string; links: readonly NavLink[] }[] = [
 ];
 
 const TABS: readonly NavLink[] = [
-  ["/", "Home", "home"],
+  ["/dashboard", "Home", "home"],
   ["/anpr", "Scan", "camera"],
   ["/entry", "Entry", "enter"],
   ["/tickets", "Tickets", "ticket"],
@@ -77,7 +83,9 @@ function activeHref(pathname: string | null): string | null {
 }
 
 export function AppNav() {
-  return <NavFrame pathname={usePathname()} />;
+  const pathname = usePathname();
+  if (pathname === "/") return null;
+  return <NavFrame pathname={pathname} />;
 }
 
 /** Rendered without a pathname as the Suspense fallback on routes whose path isn't known at prerender time. */

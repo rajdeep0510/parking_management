@@ -24,14 +24,34 @@ const isCloudDb =
   connectionString?.includes("pooler") ||
   connectionString?.includes("sslmode=");
 
-export const pool =
-  globalForPg.pgPool ??
-  new Pool({
+function createPool(): Pool {
+  const p = new Pool({
     connectionString,
     ssl: isCloudDb ? { rejectUnauthorized: false } : undefined,
+    // Cloud Postgres (Neon/Supabase) silently drops idle connections; release ours
+    // first and keep sockets alive so we don't hand out dead clients.
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 10_000,
+    keepAlive: true,
   });
+  // An idle client dropped by the server emits here; without a listener it crashes the process.
+  p.on("error", (err) => console.warn("[pg] idle client error:", err.message));
+  return p;
+}
+
+export const pool = globalForPg.pgPool ?? createPool();
 
 if (process.env.NODE_ENV !== "production") globalForPg.pgPool = pool;
+
+function isConnectionDropped(err: unknown): boolean {
+  const e = err as { code?: string; message?: string };
+  return (
+    e.code === "ECONNRESET" ||
+    e.code === "EPIPE" ||
+    e.code === "57P01" || // admin_shutdown (e.g. Neon compute suspended)
+    /Connection terminated|socket hang up/i.test(e.message ?? "")
+  );
+}
 
 export async function query<T extends QueryResultRow = QueryResultRow>(
   sql: string,
@@ -39,8 +59,15 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
 ): Promise<T[]> {
   // DB reads must happen per request, never at build-time prerender.
   await connection();
-  const res = await pool.query<T>(sql, params);
-  return res.rows;
+  try {
+    const res = await pool.query<T>(sql, params);
+    return res.rows;
+  } catch (err) {
+    if (!isConnectionDropped(err)) throw err;
+    // The pool discards the broken client, so one retry gets a fresh connection.
+    const res = await pool.query<T>(sql, params);
+    return res.rows;
+  }
 }
 
 export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {

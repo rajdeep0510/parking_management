@@ -84,6 +84,7 @@ export function PlateScanner({
   const [lastScannedImage, setLastScannedImage] = useState<string | null>(null);
   const [lastScannedPlate, setLastScannedPlate] = useState<string | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const cameraRequestRef = useRef(0);
 
   const [ocrStatus, setOcrStatus] = useState<string>("Initializing OCR engine…");
   const [candidatePlate, setCandidatePlate] = useState<string | null>(null);
@@ -198,10 +199,18 @@ export function PlateScanner({
   }, []);
 
   const startCamera = useCallback(async () => {
+    const requestId = ++cameraRequestRef.current;
     setCameraError(null);
     setLastScannedImage(null);
     setCandidatePlate(null);
     setLastScannedPlate(null);
+
+    // Release any stream we already hold; the OS won't hand the device out twice.
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+
     try {
       const constraints: MediaStreamConstraints = {
         video: selectedDeviceId
@@ -209,6 +218,11 @@ export function PlateScanner({
           : { facingMode: { ideal: "environment" }, width: { ideal: 1280 } },
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      // A newer start (device switch / StrictMode remount) or unmount superseded this one.
+      if (requestId !== cameraRequestRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -221,9 +235,15 @@ export function PlateScanner({
           : "🔴 Ready for EXIT: Scanning plate will calculate fee & EMPTY slot (AVAILABLE)."
       );
     } catch (err) {
-      console.error("Camera access error:", err);
+      if (requestId !== cameraRequestRef.current) return;
+      console.warn("Camera access error:", err);
+      const name = (err as DOMException)?.name;
       setCameraError(
-        "Could not access camera. Please allow camera permissions or test using manual plate input below."
+        name === "NotReadableError"
+          ? "Camera is in use by another app or tab. Close it (Zoom, FaceTime, another browser tab) and press Space to retry."
+          : name === "NotAllowedError"
+            ? "Camera permission denied. Allow camera access in the browser, or use manual plate input below."
+            : "Could not access camera. Please allow camera permissions or test using manual plate input below."
       );
       setIsCameraActive(false);
     }
@@ -234,6 +254,7 @@ export function PlateScanner({
     startCamera();
 
     return () => {
+      cameraRequestRef.current++; // invalidate any getUserMedia still in flight
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
